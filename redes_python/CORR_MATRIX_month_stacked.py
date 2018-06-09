@@ -1,6 +1,6 @@
 """
 Este codigo toma el hdf con los precios, calcula los retornos y
-calcula una matriz de correlacion 3000x3000, y la exporta en formato hdf y formato csv
+calcula unos vectors de edges para ahorrar espacio, y la exporta en formato hdf y formato csv
 No aplica ninguna transformacion adicional a los datos
 
 """
@@ -10,9 +10,7 @@ import os
 import numpy as np
 print ("Se importaron las librerias necesarias")
 
-n_stocks=3000
-threshold=0.4
-
+threshold=0.5
 
 years=[2016,2017]
 meses=["Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -24,22 +22,23 @@ for year in years:
         path = os.path.join("RAW", indexes_2[1]+str(meses[i])+"_"+str(year)+".hdf")
         print("Importando los datos")
         df = pd.read_hdf(path, key='table')
-        print("Modificando el tamano del dataframe")
-        df2 = df.iloc[:, 0:n_stocks]
         print("Calculando retornos")
-        df3 = df2.pct_change(periods=1)
+        df3 = df.pct_change(periods=1)
         print("Calculando la matriz de correlacion")
         corr_matrix = df3.corr()
+        print("Eliminando info sobrante")
         corr_matrix = corr_matrix.replace(float(1.0), np.nan)
         corr_matrix = corr_matrix.mask(np.arange(corr_matrix.shape[0])[:, None] >= np.arange(corr_matrix.shape[0]))
-        corr_matrix[(corr_matrix >= -threshold) & (corr_matrix <= threshold)] = np.nan
+        corr_matrix[ (corr_matrix <= threshold)] = np.nan
+        print("Eliminando celdas missing")
+        edges_df = corr_matrix.stack().reset_index()
+        edges_df.columns = ["Source", "Target", "Weight"]
+        edges_df=edges_df.round(2)
         # corr_matrix=corr_matrix.cut(corr_matrix.columns,bins=[-0.1,0.1],labe)
-        path2 = os.path.join("RAW", "CORR_MATRIX.csv")
+        path2 = os.path.join("RAW", "CORR_MATRIX_"+indexes_2[1]+str(meses[i])+"_"+str(year)+".csv")
         path3 = os.path.join("RAW", "CORR_MATRIX_"+indexes_2[1]+str(meses[i])+"_"+str(year)+".hdf")
-        print("Exportando matriz de correlacion a HDF"+str(meses[i])+str(year))
-        corr_matrix.to_hdf(path3, key='table', comp='blosc')
-
-
-
-
-
+        print("Exportando vector correlacion a HDF"+str(meses[i])+str(year))
+        edges_df.to_hdf(path3, key='table', comp='blosc')
+        print("Exportando vector de correlacion a CSV" + str(meses[i]) + str(year))
+        edges_df.to_csv(path2, header=["Source", "Target", "Weight"], chunksize=100, index=False)
+        print("-------------------------------------------------------")
